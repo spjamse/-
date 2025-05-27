@@ -1,0 +1,86 @@
+Sub 收集資料到代整理()
+    Dim folderPath As String, fileName As String
+    Dim wb As Workbook, ws As Worksheet, destWs As Worksheet
+    Dim headerRow As Long, startCol As Long, endCol As Long
+    Dim dataEndRow As Long, destRow As Long
+
+    ' 選擇資料夾
+    With Application.FileDialog(msoFileDialogFolderPicker)
+        .Title = "選擇含有 Excel 的資料夾"
+        If .Show <> -1 Then Exit Sub
+        folderPath = .SelectedItems(1) & "\"
+    End With
+
+    Set destWs = ThisWorkbook.Sheets("代整理")
+    destRow = destWs.Cells(destWs.Rows.Count, 1).End(xlUp).Row + 1
+    fileName = Dir(folderPath & "*.xlsx")
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    Do While fileName <> ""
+        Set wb = Workbooks.Open(folderPath & fileName, ReadOnly:=True)
+        Set ws = Nothing
+        On Error Resume Next
+        Set ws = wb.Sheets(1) ' 可自行改成指定工作表名稱
+        On Error GoTo 0
+
+        If Not ws Is Nothing Then
+            If FindHeaderRange(ws, headerRow, startCol, endCol) Then
+                dataEndRow = FindDataEndRow(ws, headerRow + 1, startCol)
+                CopyDataRange ws, headerRow + 1, dataEndRow, startCol, endCol, destWs, destRow
+            End If
+        End If
+
+        wb.Close SaveChanges:=False
+        fileName = Dir
+    Loop
+
+    Application.ScreenUpdating = True
+    MsgBox "資料已彙整完成！", vbInformation
+End Sub
+
+Function FindHeaderRange(ws As Worksheet, ByRef headerRow As Long, ByRef startCol As Long, ByRef endCol As Long) As Boolean
+    Dim i As Long, cell As Range
+    For i = 1 To 20
+        For Each cell In ws.Rows(i).Cells
+            If Trim(cell.Value) = "序號" Then
+                headerRow = i
+                startCol = cell.Column
+                Exit For
+            End If
+        Next cell
+        If headerRow > 0 Then Exit For
+    Next i
+
+    If headerRow = 0 Then Exit Function
+
+    endCol = startCol
+    Do While ws.Cells(headerRow, endCol).Value <> "規格" And endCol < ws.Columns.Count
+        endCol = endCol + 1
+    Loop
+
+    If ws.Cells(headerRow, endCol).Value = "規格" Then
+        FindHeaderRange = True
+    End If
+End Function
+
+Function FindDataEndRow(ws As Worksheet, startRow As Long, col As Long) As Long
+    Dim i As Long
+    i = startRow
+    Do While True
+        If Trim(ws.Cells(i, col).Value) = "" Then Exit Do
+        If InStr(ws.Cells(i, col).Value, "備註") > 0 Then Exit Do
+        i = i + 1
+    Loop
+    FindDataEndRow = i - 1
+End Function
+
+Sub CopyDataRange(wsSrc As Worksheet, rowStart As Long, rowEnd As Long, colStart As Long, colEnd As Long, wsDest As Worksheet, ByRef destRow As Long)
+    Dim r As Long
+    For r = rowStart To rowEnd
+        wsDest.Range(wsDest.Cells(destRow, 1), wsDest.Cells(destRow, colEnd - colStart + 1)).Value = _
+            wsSrc.Range(wsSrc.Cells(r, colStart), wsSrc.Cells(r, colEnd)).Value
+        destRow = destRow + 1
+    Next r
+End Sub
